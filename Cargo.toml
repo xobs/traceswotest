@@ -1,0 +1,39 @@
+[package]
+authors = ["Sean Cross <sean@osdyne.com>"]
+edition = "2018"
+readme = "README.md"
+name = "tracetest"
+version = "0.1.0"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+embedded-hal = "0.2.7"
+
+# What is this even?
+nb = "1.1"
+
+# cortex-m-semihosting = "0.3.3"
+panic-halt = "0.2.0"
+# stm32f1 = { version = "0.15", features = ["rt", "stm32f103"] }
+
+# Uncomment for the panic example.
+# panic-itm = "0.4.1"
+
+# Uncomment for the allocator example.
+# alloc-cortex-m = "0.4.0"
+
+[dependencies.stm32f1xx-hal]
+version = "0.10.0"
+features = ["rt", "stm32f103", "medium"]
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "tracetest"
+test = false
+bench = false
+
+[profile.release]
+codegen-units = 1 # better optimizations
+debug = true # symbols are nice and they don't increase the size on Flash
+lto = true # better optimizations
