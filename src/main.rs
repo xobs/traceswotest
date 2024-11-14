@@ -27,7 +27,8 @@ use stm32f1xx_hal::{
     timer::Timer,
 };
 
-const SWO_BAUDRATE: u32 = 1 * 1000 * 1000;
+// const SWO_BAUDRATE: u32 = 9600;
+const SWO_BAUDRATE: u32 = 4 * 1000 * 1000;
 const ARM_LAR_ACCESS_ENABLE: u32 = 0xc5acce55;
 const SCS_DEMCR: *mut u32 = 0xE000EDFC as *mut u32;
 const SCS_DEMCR_TRCENA: u32 = 1 << 24;
@@ -53,9 +54,24 @@ const DBGMCU_CR_TRACE_MODE_MASK: u32 = 0x000000C0;
 const DBGMCU_CR_TRACE_MODE_ASYNC: u32 = 0x00000000;
 const TPIU_FFCR_ENFCONT: u32 = 1 << 1;
 const TPIU_SPPR_ASYNC_MANCHESTER: u32 = 1;
-// const TPIU_SPPR_ASYNC_NRZ: u32 = 2;
+const TPIU_SPPR_ASYNC_NRZ: u32 = 2;
 
-fn swo_setup(clocks: &stm32f1xx_hal::rcc::Clocks) {
+#[derive(PartialEq)]
+enum SwoProtocol {
+    Manchester,
+    Nrz,
+}
+
+impl SwoProtocol {
+    fn tpiu_sppr_value(&self) -> u32 {
+        match self {
+            SwoProtocol::Manchester => TPIU_SPPR_ASYNC_MANCHESTER,
+            SwoProtocol::Nrz => TPIU_SPPR_ASYNC_NRZ,
+        }
+    }
+}
+
+fn swo_setup(clocks: &stm32f1xx_hal::rcc::Clocks, protocol: SwoProtocol) {
     unsafe {
         /* Enable tracing in DEMCR */
         SCS_DEMCR.write_volatile(SCS_DEMCR.read_volatile() | SCS_DEMCR_TRCENA);
@@ -67,7 +83,7 @@ fn swo_setup(clocks: &stm32f1xx_hal::rcc::Clocks) {
         TPIU_LAR.write_volatile(ARM_LAR_ACCESS_ENABLE);
         TPIU_CSPSR.write_volatile(1 /* 1-bit mode */);
         TPIU_ACPR.write_volatile(divisor);
-        TPIU_SPPR.write_volatile(TPIU_SPPR_ASYNC_MANCHESTER);
+        TPIU_SPPR.write_volatile(protocol.tpiu_sppr_value());
         /* Ensure that TPIU framing is off */
         TPIU_FFCR.write_volatile(TPIU_FFCR.read_volatile() & !TPIU_FFCR_ENFCONT);
 
@@ -104,7 +120,6 @@ fn main() -> ! {
     // Get access to the device specific peripherals from the peripheral access crate
     let mut dp = pac::Peripherals::take().unwrap();
 
-
     // Take ownership over the raw flash and rcc devices and convert them into the corresponding
     // HAL structs
     let mut flash = dp.FLASH.constrain();
@@ -114,7 +129,7 @@ fn main() -> ! {
     // `clocks`
     let clocks = rcc.cfgr.freeze(&mut flash.acr);
 
-    swo_setup(&clocks);
+    swo_setup(&clocks, SwoProtocol::Manchester);
 
     // Acquire the GPIOC peripheral
     let mut gpioa = dp.GPIOA.split();
@@ -125,20 +140,21 @@ fn main() -> ! {
     let mut led = gpioa.pa3.into_push_pull_output(&mut gpioa.crl);
     // Configure the syst timer to trigger an update every second
     let mut timer = Timer::syst(cp.SYST, &clocks).counter_hz();
-    timer.start(1.Hz()).unwrap();
+    timer.start(10.Hz()).unwrap();
 
     // Wait for the timer to trigger an update and change the state of the LED
-    let mut b = 0x80u8;
+    // let mut b = 0x80u8;
     loop {
-        // led.set_high();
-        cortex_m::itm::write_all(stim, &[b, b, b, b]);
-        cortex_m::itm::write_all(stim, &[b, b, b, b]);
-        b = b.wrapping_add(1);
-        // block!(timer.wait()).unwrap();
+        led.set_high();
+        iprintln!(stim, "Hello, world!");
+        // cortex_m::itm::write_all(stim, &[b, b, b, b]);
+        // cortex_m::itm::write_all(stim, &[b, b, b, b]);
+        // b = b.wrapping_add(1);
+        block!(timer.wait()).unwrap();
 
-        // // led.set_low();
-        // cortex_m::itm::write_all(stim, &[0x55]);
-        // // block!(timer.wait()).unwrap();
+        led.set_low();
+        cortex_m::itm::write_all(stim, &[0x55]);
+        block!(timer.wait()).unwrap();
 
         // led.set_low();
         // cortex_m::itm::write_all(stim, &[0xff]);
